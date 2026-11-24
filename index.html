@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سمرة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lemonada:wght@500;600;700&family=Readex+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="questions.js"></script>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div class="logo"><span class="moon" aria-hidden="true"></span><div><h1>سمرة</h1><small></small></div></div>
+    <div class="row"><button class="ghost" id="mute">🔊 الصوت شغال</button><button class="ghost hide" id="newBtn">لعبة جديدة</button></div>
+  </div>
+  
+</header>
+
+<main>
+  <section id="setup">
+    <div class="panel">
+      <h2>👥 الفريقين</h2>
+      <p class="hint"> انتبهوا: فيه أسئلة خصم مخفية في اللوحة </p>
+      <div class="grid3">
+        <div><label for="tA">الفريق الأول</label><input type="text" id="tA" value="الفريق الاول" maxlength="24"></div>
+        <div><label for="tB">الفريق الثاني</label><input type="text" id="tB" value="الفريق الثاني" maxlength="24"></div>
+        <div><label for="tm">وقت الإجابة</label>
+          <select id="tm"><option value="30">30 ثانية</option><option value="45">45 ثانية</option><option value="60" selected>60 ثانية</option><option value="90">90 ثانية</option></select></div>
+        <div><label for="lv">مستوى الأسئلة</label>
+          <select id="lv"><option value="mix" selected>منوّع: سهل ومتوسط وصعب</option><option value="easy">أغلبه سهل (للصغار)</option><option value="hard">أغلبه صعب (للمحترفين)</option></select></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>🎯 اختاروا الفئات</h2>
+      <p class="hint" id="catHint"></p>
+      <div id="chips"></div>
+      <div class="row" style="margin-top:16px"><button class="soft" id="rnd">🎲 عشوائي 6 فئات</button><button class="soft" id="all">الكل</button><button class="soft" id="none">إلغاء الكل</button><button class="soft" id="resetSeen">♻️ رجّع الأسئلة اللي طلعت</button></div>
+      <p class="note" id="seenNote" style="margin:10px 0 0"></p>
+    </div>
+    <div class="panel">
+      <h2>⭐ فئاتكم الخاصة</h2>
+      <p class="hint">سوّوا فئة بأسئلتكم: أول سؤالين سهلة، بعدها متوسطة، وآخر سؤالين صعبة.  (عن العايلة، الشلة، أي شي) وحطّوا صورة لكل سؤال لو تبون. تنحفظ في هذا المتصفح.</p>
+      <details id="cfWrap"><summary>➕ أضف فئة جديدة</summary>
+        <form class="cf" id="cf">
+          <div class="grid3">
+            <div><label for="cfn">اسم الفئة</label><input type="text" id="cfn" maxlength="24" placeholder="مثلاً: أسئلة العايلة"></div>
+            <div><label for="cfe">إيموجي الفئة (اختياري)</label><input type="text" id="cfe" maxlength="4" placeholder="⭐"></div>
+          </div>
+          <div id="cfRows"></div>
+          <div class="row"><button class="go" style="font-size:19px;padding:10px 28px" type="submit">احفظ الفئة</button><span class="note" id="cfErr"></span></div>
+        </form>
+      </details>
+      <div class="mylist" id="mylist"></div>
+    </div>
+    <div class="row"><button class="go" id="start">يلا نبدأ 🎉</button><span class="note" id="err"></span></div>
+  </section>
+
+  <section id="game" class="hide">
+    <div class="bar" id="bar"></div>
+    <div class="board" id="board"></div>
+    <div class="tools"><span id="left"></span><button class="soft" id="finish">🏁 إنهاء اللعبة وإعلان الفائز</button></div>
+  </section>
+
+  <section id="end" class="hide end"></section>
+</main>
+
+<div class="ov hide" id="ov" role="dialog" aria-modal="true" aria-labelledby="qt"><div class="qbox" id="qbox"></div></div>
+
+<script>
+{
+const P=[200,200,400,400,600,600];
+const LVN=['سهل','متوسط','صعب'];
+const LVMAP={mix:[0,0,1,1,2,2],easy:[0,0,0,0,1,1],hard:[1,1,2,2,2,2]};
+const COLORS=['--c1','--c2','--c3','--c4','--c5','--c6'];
+const GROUPS=['منوّعة','كورة','ألعاب صور','خمّن من أنا','ألعاب جماعية','تمثيل صامت','أنمي','فئاتكم'];
+const FIELDS=['إنسان','حيوان','نبات','جماد','بلاد'],FN=[[0,1,3],[0,1,2,3],[0,1,2,3,4]];
+const AIDS={dbl:'دبل ×2',steal:'🦹 سرقة',call:'📞 صديق 60ث',search:'🔎 بحث 50ث',two:'جوابين'};
+const AIDTIME={call:60,search:50};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+
+/* ===== الأصوات (يولّدها المتصفح، ما تحتاج ملفات) ===== */
+let AC=null,muted=ls.get('samra-mute',false);
+function tone(list){if(muted)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();
+  for(const [f,t,d,type='sine',v=.2] of list){const o=AC.createOscillator(),g=AC.createGain(),s=AC.currentTime+t;
+    o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(v,s+.015);g.gain.exponentialRampToValueAtTime(.001,s+d);
+    o.connect(g);g.connect(AC.destination);o.start(s);o.stop(s+d+.05)}}catch(e){}}
+const SND={
+  pick:[[660,0,.12,'triangle'],[990,.06,.12,'triangle']],
+  tick:[[1250,0,.05,'square',.05]],
+  steal:[[880,0,.14,'square',.1],[660,.16,.22,'square',.1]],
+  out:[[420,0,.25,'sawtooth',.13],[320,.25,.25,'sawtooth',.13],[220,.5,.55,'sawtooth',.13]],
+  reveal:[[523,0,.15],[659,.1,.15],[784,.2,.35]],
+  ok:[[523,0,.15,'triangle',.25],[659,.12,.15,'triangle',.25],[784,.24,.15,'triangle',.25],[1047,.36,.5,'triangle',.25]],
+  no:[[170,0,.55,'sawtooth',.14],[130,.12,.55,'sawtooth',.14]],
+  miss:[[220,0,.18,'square',.08]],
+  trap:[[300,0,.2,'square',.15],[200,.22,.2,'square',.15],[300,.44,.2,'square',.15],[150,.66,.5,'sawtooth',.15]],
+  aid:[[740,0,.1],[988,.08,.25]],
+  win:[[523,0,.18,'triangle',.25],[523,.2,.18,'triangle',.25],[523,.4,.18,'triangle',.25],[659,.6,.5,'triangle',.25],[587,1.1,.2,'triangle',.25],[659,1.3,.2,'triangle',.25],[784,1.5,.9,'triangle',.25]]
+};
+const play=k=>tone(SND[k]);
+function muteUI(){$('mute').textContent=muted?'🔇 الصوت طافي':'🔊 الصوت شغال'}
+$('mute').onclick=()=>{muted=!muted;ls.set('samra-mute',muted);muteUI();play('pick')};
+muteUI();
+
+/* ===== قصاصات الاحتفال ===== */
+function confetti(n=90){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const cs=['#ff5a5f','#ffc93c','#12b5a6','#7b5cff','#ff5fae','#2f9bff','#ff9f1c'];
+  for(let i=0;i<n;i++){const d=document.createElement('i');d.className='confetti';
+    d.style.left=Math.random()*100+'vw';d.style.background=cs[i%cs.length];
+    d.style.setProperty('--x',(Math.random()*200-100)+'px');d.style.setProperty('--r',(Math.random()*900-450)+'deg');
+    d.style.setProperty('--d',(1.8+Math.random()*1.6)+'s');d.style.animationDelay=Math.random()*.4+'s';
+    document.body.appendChild(d);setTimeout(()=>d.remove(),4200)}
+}
+
+/* ===== ألعاب الصور (تتولد تلقائياً، ما تتكرر) ===== */
+const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const pickR=(r,a)=>a[Math.floor(r()*a.length)];
+const shuffleR=(r,a)=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const W=320,H=230;
+function place(r,n,sz){const pts=[];let k=0;while(pts.length<n&&k<8000){k++;const s=sz[0]+r()*(sz[1]-sz[0]),x=s/2+4+r()*(W-s-8),y=s/2+4+r()*(H-s-8);
+  if(pts.every(p=>Math.hypot(p.x-x,p.y-y)>(p.s+s)/2+2))pts.push({x,y,s})}return pts}
+const emo=o=>o.hide?'':`<text x="${o.x.toFixed(1)}" y="${o.y.toFixed(1)}" font-size="${(o.s*(o.k||1)).toFixed(1)}" text-anchor="middle" dominant-baseline="central"${o.rot?` transform="rotate(${o.rot.toFixed(0)} ${o.x.toFixed(1)} ${o.y.toFixed(1)})"`:''}>${o.e}</text>`;
+const SCENES=[
+  {bg:'#bfe9ff',gr:'#8fd16a',e:['🌳','🌸','🐶','🐱','🎈','🏠','☀️','☁️','🚗','🦋','🍎','⚽','🐦','🌻','🚲','🍄','🐰','🌷']},
+  {bg:'#7fd3f0',gr:'#f4d99b',e:['🐠','🐟','🐙','🦀','🐚','⭐','🐳','🦑','🐡','⚓','🐢','🦈','🪼','🐬']},
+  {bg:'#ffe7c2',gr:'#f6c98a',e:['🍎','🍌','🍇','🍕','🍩','🧁','☕','🍪','🥕','🍉','🥚','🧀','🍔','🍓','🥐','🍋']},
+  {bg:'#2b2253',gr:'#3d3170',e:['🚀','🌙','⭐','🪐','👽','🛸','☄️','🌍','🛰️','✨','👨‍🚀','🌟']},
+  {bg:'#fff3d6',gr:'#f2d28c',e:['🐪','🌴','⛺','🦂','🌵','☀️','🦅','🏜️','🐫','🦎','🪨','🐐']}
+];
+function genDiff(seed,lvl){
+  const r=rng(seed),sc=pickR(r,SCENES),c=[{n:10,sz:[36,48],d:3},{n:16,sz:[28,38],d:5},{n:24,sz:[21,29],d:7}][lvl];
+  const pts=place(r,c.n+c.d,c.sz),objs=pts.slice(0,c.n).map(p=>({...p,e:pickR(r,sc.e)})),spare=pts.slice(c.n),right=objs.map(o=>({...o}));
+  const types=lvl?['gone','swap','add','size']:['gone','swap','add'],diffs=[];
+  for(const i of shuffleR(r,objs.map((_,i)=>i)).slice(0,c.d)){
+    let t=pickR(r,types),o=right[i];
+    if(t==='add'&&spare.length){const p=spare.pop(),n={...p,e:pickR(r,sc.e)};right.push(n);diffs.push({x:p.x,y:p.y,r:p.s*.65+10});continue}
+    if(t==='add')t='swap';
+    if(t==='gone')o.hide=true;
+    else if(t==='size')o.k=r()<.5?1.55:.55;
+    else{let e;do{e=pickR(r,sc.e)}while(e===o.e);o.e=e}
+    diffs.push({x:o.x,y:o.y,r:o.s*.65+10});
+  }
+  const svg=(list,side)=>`<svg class="pic" data-side="${side}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${sc.bg}"/><rect y="${H*.72}" width="${W}" height="${H*.28}" fill="${sc.gr}"/>${list.map(emo).join('')}<g class="marks"></g></svg>`;
+  return {type:'diff',n:c.d,diffs,L:svg(objs,'L'),R:svg(right,'R')};
+}
+const ODD=[
+  [['🐶','🐱'],['🍎','🍌'],['⚽','🏀'],['🌞','🌙'],['🚗','🚌'],['🐸','🐢'],['🍓','🍇'],['🐟','🐦']],
+  [['🍎','🍅'],['😀','😃'],['🐻','🐨'],['🐝','🪰'],['🍊','🍑'],['🚗','🚙'],['🐯','🦁'],['🌸','🌺']],
+  [['😀','😄'],['🕐','🕑'],['🙂','🙃'],['😐','😑'],['🔷','🔹'],['🍏','🍐'],['🌑','🌚'],['😊','☺️'],['🐁','🐀']]
+];
+function genOdd(seed,lvl){const r=rng(seed),pr=shuffleR(r,pickR(r,ODD[lvl])),n=[5,7,9][lvl];return {type:'odd',n,a:pr[0],b:pr[1],idx:Math.floor(r()*n*n)}}
+const COUNT=[
+  [['⭐','🐟','🌸'],['🍎','🍌','🚗'],['🐶','🐱','🐭'],['🎈','⚽','📚'],['🐥','🌵','🍩']],
+  [['🍎','🍅','🍒'],['🐝','🦋','🐞'],['🚗','🚕','🚙'],['🐟','🐠','🐡'],['🌸','🌺','🌷']],
+  [['🍎','🍅','🍓','🍒'],['⭐','🌟','✨'],['😀','😃','😄'],['🔴','🟠','🟤'],['🐁','🐀','🐹']]
+];
+function genCount(seed,lvl){
+  const r=rng(seed),set=pickR(r,COUNT[lvl]),c=[{t:[4,8],o:[6,10],sz:[30,40]},{t:[8,13],o:[12,18],sz:[24,32]},{t:[12,18],o:[20,28],sz:[18,25]}][lvl];
+  const nt=c.t[0]+Math.floor(r()*(c.t[1]-c.t[0]+1)),no=c.o[0]+Math.floor(r()*(c.o[1]-c.o[0]+1));
+  const pts=shuffleR(r,place(r,nt+no,c.sz)),objs=pts.map((p,i)=>({...p,e:i<nt?set[0]:pickR(r,set.slice(1)),rot:r()*50-25,tg:i<nt}));
+  const count=objs.filter(o=>o.tg).length;
+  return {type:'count',target:set[0],count,objs,svg:`<svg class="pic" viewBox="0 0 ${W} ${H}" style="cursor:default"><rect width="${W}" height="${H}" fill="#fff8ec"/>${objs.map(emo).join('')}<g class="marks"></g></svg>`};
+}
+const GEN={diff:genDiff,odd:genOdd,count:genCount};
+
+/* ===== الفئات ===== */
+let MINE=ls.get('samra-custom',[]),imgs=Array(6).fill(''),SEEN=ls.get('samra-seen',{});
+const allCats=()=>CATS.map(c=>({g:'منوّعة',...c})).concat(MINE.map(c=>({...c,g:'فئاتكم',mine:true,L:[c.q.slice(0,2),c.q.slice(2,4),c.q.slice(4,6)]})));
+let sel=new Set(['معلومات عامة','كرة قدم','أوجد الفرق','من أنا؟ مشاهير','إنسان حيوان جماد','تمثيل صامت']);
+function poolSize(){return CATS.reduce((s,c)=>s+(c.L?c.L.flat().length:0),0)}
+function seenUI(){const n=Object.values(SEEN).reduce((s,a)=>s+a.length,0);
+  $('seenNote').textContent=`فيه ${poolSize()} سؤال، وطلع منها ${n} للحين. اللعبة ما تكرر سؤال لين تخلص أسئلة المستوى، وألعاب الصور تتولد جديدة كل مرة.`}
+$('resetSeen').onclick=()=>{SEEN={};ls.set('samra-seen',SEEN);seenUI();play('pick')};
+
+$('cfRows').innerHTML=P.map((p,i)=>`<div class="qrow"><b>${p}</b>
+  <input type="text" id="cq${i}" placeholder="السؤال (${LVN[Math.floor(i/2)]})" aria-label="السؤال ${i+1}">
+  <input type="text" id="ca${i}" placeholder="الجواب" aria-label="الجواب ${i+1}">
+  <div class="imgpick"><input type="url" id="cu${i}" placeholder="رابط صورة (اختياري)" aria-label="رابط صورة ${i+1}">
+  <label class="up" for="cfile${i}" id="cul${i}">📷 من الجهاز</label><input type="file" accept="image/*" id="cfile${i}" data-i="${i}"></div></div>`).join('');
+$('cfRows').addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0];if(!f)return;const i=+e.target.dataset.i;
+  const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{
+    const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas');
+    c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    imgs[i]=c.toDataURL('image/jpeg',.8);const l=$('cul'+i);l.textContent='✔ تمت';l.classList.add('has')};im.src=rd.result};rd.readAsDataURL(f);
+});
+$('cf').addEventListener('submit',e=>{
+  e.preventDefault();
+  const n=$('cfn').value.trim();if(!n){$('cfErr').textContent='اكتبوا اسم الفئة';return}
+  if(allCats().some(c=>c.n===n)){$('cfErr').textContent='فيه فئة بنفس الاسم';return}
+  const q=[];for(let i=0;i<6;i++){const a=$('cq'+i).value.trim(),b=$('ca'+i).value.trim();
+    if(!a||!b){$('cfErr').textContent=`ناقص سؤال أو جواب في سطر ${P[i]} رقم ${i+1}`;return}
+    const im=imgs[i]||$('cu'+i).value.trim();q.push(im?[a,b,{src:im}]:[a,b])}
+  const next=MINE.concat([{n,e:$('cfe').value.trim()||'⭐',q}]);
+  if(!ls.set('samra-custom',next)){$('cfErr').textContent='الصور كبيرة على ذاكرة المتصفح، جرّبوا روابط أو صور أقل';return}
+  MINE=next;sel.add(n);$('cf').reset();imgs=Array(6).fill('');
+  for(let i=0;i<6;i++){const l=$('cul'+i);l.textContent='📷 من الجهاز';l.classList.remove('has')}
+  $('cfErr').textContent='انحفظت ✔';$('cfWrap').open=false;chips();play('ok');
+});
+$('mylist').addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(!b)return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='متأكد؟';return}
+  const n=b.dataset.del;MINE=MINE.filter(c=>c.n!==n);sel.delete(n);ls.set('samra-custom',MINE);chips()});
+
+function chips(){
+  const all=allCats();
+  $('chips').innerHTML=GROUPS.map(g=>{const cs=all.filter(c=>c.g===g);if(!cs.length)return'';
+    return `<div class="group">${g}</div><div class="chips">${cs.map(c=>`<button class="chip ${c.mine?'mine':''}" data-n="${esc(c.n)}" aria-pressed="${sel.has(c.n)}">${esc(c.e||'')} ${esc(c.n)}</button>`).join('')}</div>`}).join('');
+  $('catHint').textContent=`مختار ${all.filter(c=>sel.has(c.n)).length} من ${all.length} فئة · كل فئة فيها سؤالين سهلة (200) وسؤالين متوسطة (400) وسؤالين صعبة (600). ننصح بـ 6 فئات (صفّين، كل صف 3).`;
+  $('mylist').innerHTML=MINE.length?MINE.map(c=>`<span>${esc(c.e)} ${esc(c.n)} <button data-del="${esc(c.n)}">حذف</button></span>`).join(''):'<span class="note" style="border:0;background:none">ما عندكم فئات خاصة للحين</span>';
+  seenUI();
+}
+$('chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;const n=b.dataset.n;sel.has(n)?sel.delete(n):sel.add(n);chips();play('pick')});
+$('rnd').onclick=()=>{const a=allCats().map(c=>c.n).sort(()=>Math.random()-.5);sel=new Set(a.slice(0,6));chips();play('pick')};
+$('all').onclick=()=>{sel=new Set(allCats().map(c=>c.n));chips()};
+$('none').onclick=()=>{sel.clear();chips()};
+
+/* ===== سحب الأسئلة بدون تكرار ===== */
+function draw(cat,lvl,n){
+  const pool=cat.L[lvl]||[],key=cat.n+'|'+lvl;if(!pool.length)return[];
+  let seen=SEEN[key]||[],free=pool.map((_,i)=>i).filter(i=>!seen.includes(i));
+  if(free.length<n){SEEN[key]=seen=[];free=pool.map((_,i)=>i)}
+  free.sort(()=>Math.random()-.5);
+  const out=[];for(let j=0;j<n;j++)out.push(free[j%free.length]);
+  return out.map(i=>{const x=pool[i],base={lvl,key,i};
+    if(cat.type==='act'||cat.type==='letter')return{...base,q:x,a:x};
+    if(cat.type==='who')return{...base,clues:x[0].split('|'),a:x[1]};
+    return{...base,q:x[0],a:x[1],img:x[2]||null}});
+}
+function build(cat,mode){
+  const lv=LVMAP[mode]||LVMAP.mix;
+  if(cat.gen)return lv.map(l=>({lvl:l,gen:cat.gen,seed:Math.floor(Math.random()*2**31)}));
+  const need=[0,0,0];lv.forEach(l=>need[l]++);
+  const got=[0,1,2].map(l=>{let lvl=l;while(cat.L[lvl]&&!cat.L[lvl].length&&lvl>0)lvl--;return need[l]?draw(cat,lvl,need[l]):[]});
+  return lv.map(l=>got[l].shift());
+}
+
+/* ===== اللعبة ===== */
+let S=null,Q=null,tick=null,editing=-1;
+const save=()=>ls.set('samra-state',S);
+$('start').onclick=()=>{
+  const chosen=allCats().filter(c=>sel.has(c.n));
+  if(chosen.length<2){$('err').textContent='اختاروا فئتين على الأقل';return}
+  const mode=$('lv').value;
+  const cats=chosen.map(c=>({n:c.n,e:c.e,type:c.type||'',items:build(c,mode)}));
+  const nm=(id,d)=>$(id).value.trim()||d;
+  const slots=[];cats.forEach((c,ci)=>{if(c.type!=='letter')c.items.forEach((it,qi)=>{if(it)slots.push(ci+'-'+qi)})});
+  slots.sort(()=>Math.random()-.5);
+  const traps=slots.slice(0,Math.max(2,Math.round(slots.length/12)));
+  S={teams:[{name:nm('tA','الفريق الأول'),score:0,used:{},dbl:false},{name:nm('tB','الفريق الثاني'),score:0,used:{},dbl:false}],
+     cats,done:{},turn:0,time:+$('tm').value,traps,view:'game'};
+  ls.set('samra-seen',SEEN);$('err').textContent='';save();play('reveal');confetti(50);show();
+};
+function show(){
+  const v=S?S.view:'setup';
+  $('setup').classList.toggle('hide',v!=='setup');$('game').classList.toggle('hide',v!=='game');$('end').classList.toggle('hide',v!=='end');
+  $('newBtn').classList.toggle('hide',v==='setup');
+  if(v==='setup')chips();else if(v==='game')renderGame();else renderEnd();
+}
+function teamCard(t,i){
+  const on=S.turn===i;
+  const name=editing===i?`<input type="text" id="renIn" value="${esc(t.name)}" maxlength="24" aria-label="اسم الفريق">`
+    :`<button class="ren" data-ren="${i}" title="اضغط لتغيير الاسم">${esc(t.name)} <small>✏️</small></button>`;
+  return `<div class="team ${on?'on':''}" style="--tc:var(--${i?'b':'a'})">
+    <div class="nm">${name}${on?'<span class="badge">دوركم</span>':''}</div>
+    <div class="sc">${t.score}</div>
+    <div class="adj"><button data-adj="${i}" data-d="100" aria-label="زيادة 100">+100</button><button data-adj="${i}" data-d="-100" aria-label="خصم 100">−100</button></div>
+    <div class="aids">${Object.keys(AIDS).map(k=>{
+      const gone=t.used[k],act=k==='dbl'&&t.dbl,dis=gone||k!=='dbl'||!on;
+      return `<button class="aid ${gone?'gone':''} ${act?'act':''}" data-aid="${k}" data-t="${i}" ${dis&&!act?'disabled':''} title="${k==='dbl'?'فعّلوه قبل اختيار السؤال أو داخله':k==='steal'?'يستخدمه الفريق الثاني داخل السؤال':'يُستخدم داخل السؤال'}">${AIDS[k]}</button>`}).join('')}</div>
+  </div>`;
+}
+function renderGame(){
+  $('bar').innerHTML=teamCard(S.teams[0],0)+`<div class="turn">الدور على<b>${esc(S.teams[S.turn].name)}</b>اختاروا سؤال 👇</div>`+teamCard(S.teams[1],1);
+  $('board').innerHTML=S.cats.map((c,ci)=>`<div class="cat"><h3><i>${esc(c.e||'')}</i>${esc(c.n)}</h3><div class="vals">${
+    P.map((p,qi)=>{const it=c.items[qi];return `<button class="v" data-c="${ci}" data-q="${qi}" ${S.done[ci+'-'+qi]||!it?'disabled':''} aria-label="${esc(c.n)} ${p}">${p}<small>${it?LVN[it.lvl]:'—'}</small></button>`}).join('')}</div></div>`).join('');
+  const total=S.cats.reduce((s,c)=>s+c.items.filter(Boolean).length,0),n=Object.keys(S.done).length;
+  const tl=(S.traps||[]).filter(k=>!S.done[k]).length;
+  $('left').textContent=`باقي ${total-n} سؤال من ${total} · فيه ${tl} أسئلة خصم مخفية ⚠️`;
+  const ri=$('renIn');if(ri){ri.focus();ri.select();
+    const done=ok=>{if(editing<0)return;const v=ri.value.trim();if(ok&&v)S.teams[editing].name=v;editing=-1;save();renderGame()};
+    ri.addEventListener('keydown',e=>{if(e.key==='Enter')done(true);if(e.key==='Escape')done(false)});ri.addEventListener('blur',()=>done(true))}
+}
+$('bar').addEventListener('click',e=>{
+  const r=e.target.closest('[data-ren]');if(r){editing=+r.dataset.ren;renderGame();return}
+  const a=e.target.closest('[data-adj]');if(a){S.teams[+a.dataset.adj].score+=+a.dataset.d;save();play(+a.dataset.d>0?'pick':'no');renderGame();return}
+  const b=e.target.closest('[data-aid]');if(b&&b.dataset.aid==='dbl'){const t=S.teams[+b.dataset.t];t.dbl=!t.dbl;save();if(t.dbl)play('aid');renderGame()}
+});
+$('board').addEventListener('click',e=>{const b=e.target.closest('.v');if(b&&!b.disabled)openQ(+b.dataset.c,+b.dataset.q)});
+
+function pic(im){
+  if(!im)return'';
+  if(im.svg)return `<div class="qimg">${(typeof FLAGS!=='undefined'&&FLAGS[im.svg])||''}</div>`;
+  if(im.e)return `<div class="qimg emo">${esc(im.e)}</div>`;
+  if(im.src)return `<div class="qimg"><img src="${esc(im.src)}" alt="صورة السؤال"></div>`;
+  return'';
+}
+function openQ(ci,qi){
+  const c=S.cats[ci],it=c.items[qi],act=c.type==='act';
+  if(it.key){SEEN[it.key]=SEEN[it.key]||[];if(!SEEN[it.key].includes(it.i))SEEN[it.key].push(it.i);ls.set('samra-seen',SEEN)}
+  const letter=c.type==='letter',trap=(S.traps||[]).includes(ci+'-'+qi);
+  Q={ci,qi,it,act,letter,trap,ans:S.turn,stolen:false,started:!act,peek:false,phase:'main',left:S.time,max:S.time,shown:false,paused:false,note:'',hint:1,found:new Set(),hit:-1,
+     g:it.gen?GEN[it.gen](it.seed,it.lvl):null};
+  $('qbox').style.setProperty('--k',`var(${COLORS[ci%6]})`);
+  $('ov').classList.remove('hide');play(trap?'trap':'pick');renderQ();startTick();
+}
+function startTick(){clearInterval(tick);tick=setInterval(()=>{
+  if(!Q||!Q.started||Q.paused||Q.shown||Q.phase==='out')return;
+  Q.left--;
+  if(Q.left<=0){if(Q.phase==='main'&&!Q.stolen&&!Q.letter){Q.phase='steal';Q.ans=1-S.turn;Q.left=Q.max=20;Q.note='';play('steal')}else{Q.phase='out';Q.left=0;play('out')}renderQ();return}
+  if(Q.left<=5)play('tick');
+  clockUI();
+},1000)}
+function statusText(){const a=S.teams[Q.ans];
+  return Q.phase==='out'?'خلص الوقت ⏰':Q.stolen?`🦹 ${esc(a.name)} سرقوا السؤال!`:Q.phase==='steal'?`فرصة ${esc(a.name)} يجاوبون`:Q.letter?'الفريقين يكتبون ✍️':Q.act?`${esc(a.name)} يخمّنون`:`دور ${esc(a.name)}`}
+function clockUI(){const r=document.querySelector('#qbox .ring');if(!r)return;
+  r.style.setProperty('--p',Q.max?Q.left/Q.max*100:0);r.classList.toggle('low',Q.left<=5);r.firstElementChild.textContent=Q.left}
+function marks(){
+  if(!Q.g)return;const g=Q.g;
+  if(g.type==='diff')document.querySelectorAll('#qbox svg.pic .marks').forEach(m=>{
+    m.innerHTML=g.diffs.map((d,i)=>Q.found.has(i)||Q.shown?`<circle class="found ${Q.found.has(i)?'':'all'}" cx="${d.x}" cy="${d.y}" r="${d.r}"/>`:'').join('')});
+  if(g.type==='count'&&Q.shown){const m=document.querySelector('#qbox svg.pic .marks');if(m)m.innerHTML=g.objs.filter(o=>o.tg).map(o=>`<circle class="found" cx="${o.x}" cy="${o.y}" r="${o.s*.62}"/>`).join('')}
+}
+function picBody(){
+  const g=Q.g;
+  if(g.type==='diff')return `<div class="pics"><figure><figcaption>الصورة الأولى</figcaption>${g.L}</figure><figure><figcaption>الصورة الثانية</figcaption>${g.R}</figure></div>
+    <div class="note">لقيتوا <b>${Q.found.size}</b> من ${g.n} · اضغطوا على مكان الفرق في أي صورة</div>`;
+  if(g.type==='odd'){const fs=[44,32,24][Q.it.lvl];
+    return `<div class="oddgrid" style="grid-template-columns:repeat(${g.n},1fr);--fs:clamp(16px,${fs/6}vw,${fs}px)">${Array.from({length:g.n*g.n},(_,i)=>`<button data-cell="${i}" class="${(Q.hit===i||Q.shown)&&i===g.idx?'hit':''}" aria-label="خانة ${i+1}">${i===g.idx?g.b:g.a}</button>`).join('')}</div>`}
+  if(g.type==='count')return `<div class="countbox">${g.svg}</div>`;
+  return'';
+}
+function renderQ(){
+  const c=S.cats[Q.ci],it=Q.it,p=P[Q.qi],T=S.turn,t=S.teams[T],g=Q.g;
+  const who=Q.ans,A=S.teams[who],O=1-who,live=Q.phase!=='out'&&!Q.shown;
+  const dblNote=S.teams.map(x=>x.dbl?` · ${esc(x.name)} مفعّلين الدبل (${p*2})`:'').join('');
+  const aidBtns=['dbl','call','search','two'].map(k=>`<button class="aid ${A.used[k]?'gone':''} ${k==='dbl'&&A.dbl?'act':''}" style="--tc:var(--${who?'b':'a'})" data-qa="${k}" ${A.used[k]||A.dbl&&k==='dbl'||!live?'disabled':''}>${AIDS[k]}</button>`).join('')
+    +(Q.phase==='main'&&!Q.stolen&&live?`<button class="aid ${S.teams[O].used.steal?'gone':''}" style="--tc:var(--${O?'b':'a'})" data-qa="steal" ${S.teams[O].used.steal?'disabled':''}>🦹 ${esc(S.teams[O].name)} يسرقون</button>`:'');
+  let qtext,body='',ans=it.a;
+  if(Q.act)qtext=Q.shown?'الكلمة كانت':`واحد من «${esc(t.name)}» يمثّل بدون ولا كلمة، والباقين يخمّنون 🤫`;
+  else if(Q.letter){const f=FN[it.lvl];qtext='اكتبوا بسرعة كلمات تبدأ بحرف:';
+    body=`<div class="letter">${esc(it.q)}</div><div class="fields">${f.map(i=>`<span>${FIELDS[i]}</span>`).join('')}</div>`;
+    if(Q.shown){const ex=(typeof LETTERS!=='undefined'&&LETTERS[it.q])||[];body+=`<div class="examples">${f.map(i=>`<div><small>${FIELDS[i]}</small><b>${esc(ex[i]||'—')}</b></div>`).join('')}</div>`}
+    ans='الأكثر كلمات صحيحة ياخذ النقاط'}
+  else if(it.clues){qtext='خمّنوا من أنا؟';body=`<ol class="clues">${it.clues.slice(0,Q.shown?it.clues.length:Q.hint).map((x,i)=>`<li><b>${i+1}.</b>${esc(x)}</li>`).join('')}</ol>`}
+  else if(g){qtext=g.type==='diff'?`أوجدوا الـ ${g.n} فروق بين الصورتين 🔎`:g.type==='odd'?'وين الإيموجي المختلف؟ 👀':`كم ${g.target} في الصورة؟`;
+    body=picBody();ans=g.type==='diff'?`${g.n} فروق (معلّمة بالدوائر)`:g.type==='odd'?`${g.b} في الصف ${Math.floor(g.idx/g.n)+1}، الخانة ${g.idx%g.n+1}`:`${g.count} × ${g.target}`}
+  else{qtext=esc(it.q);body=pic(it.img)}
+  let mid;
+  if(Q.shown)mid=`<div class="ans">${esc(ans)}</div>`;
+  else if(!Q.started)mid=`${Q.peek?`<div class="secret">${esc(it.q)}</div>`:''}
+     <div class="btns"><button class="peek" id="peek">${Q.peek?'🙈 خبّ الكلمة':'👀 شوف الكلمة (للممثل بس)'}</button><button class="show" id="go">🎬 ابدأ التمثيل</button></div>`;
+  else mid=`<div class="clock"><div class="ring ${Q.left<=5?'low':''}" style="--p:${Q.max?Q.left/Q.max*100:0};--c:var(--${who?'b':'a'})"><span>${Q.left}</span></div>
+       <div><div class="who">${statusText()}</div><div class="note">${esc(Q.note)||'إذا ما جاوبوا، تنتقل الفرصة للفريق الثاني 20 ثانية'}</div></div></div>
+     <div class="btns">${it.clues&&Q.hint<it.clues.length?'<button class="peek" id="hint">💡 تلميح زيادة</button>':''}${Q.act||Q.letter?'':aidBtns}<button class="soft" id="pause">${Q.paused?'▶️ كمّل الوقت':'⏸️ وقّف الوقت'}</button>${Q.phase==='main'&&!Q.stolen&&!Q.letter?'<button class="soft" id="skip">انتقل للفريق الثاني</button>':''}</div>`;
+  $('qbox').innerHTML=`
+   <div class="qhead"><span>${esc(c.e||'')} ${esc(c.n)}<span class="lvl">${LVN[it.lvl]}</span>${dblNote}</span><span class="pts">${p}</span></div>
+   ${Q.trap?`<div class="trap">⚠️ سؤال خصم! إذا ما جاوبتوا ينخصم منكم ${S.teams[loser()].dbl?p*2:p}</div>`:''}
+   <div class="qbody">
+     <div class="qtext" id="qt">${qtext}</div>
+     ${body}
+     ${mid}
+     <div class="btns">${Q.shown?
+       `<button class="award" style="background:var(--a)" data-win="0">صح لـ ${esc(S.teams[0].name)} +${S.teams[0].dbl?p*2:p}</button>
+        <button class="award" style="background:var(--b)" data-win="1">صح لـ ${esc(S.teams[1].name)} +${S.teams[1].dbl?p*2:p}</button>
+        <button class="soft" data-win="-1">ما أحد جاوب${penalized()?` (−${S.teams[loser()].dbl?p*2:p} من ${esc(S.teams[loser()].name)})`:''}</button>`:
+       Q.started?`<button class="show" id="reveal">${Q.act?'اكشف الكلمة':'أظهر الإجابة'}</button>`:''}</div>
+   </div>`;
+  marks();
+}
+function loser(){return Q&&Q.stolen?Q.ans:S.turn}
+function penalized(){return Q&&(Q.trap||Q.stolen)}
+function svgPoint(svg,e){const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;return pt.matrixTransform(svg.getScreenCTM().inverse())}
+$('qbox').addEventListener('click',e=>{
+  if(!Q)return;const t=S.teams[S.turn],id=e.target.closest('button')?.id;
+  if(Q.g&&!Q.shown){
+    const sv=e.target.closest('svg.pic');
+    if(sv&&Q.g.type==='diff'){const p=svgPoint(sv,e);
+      const i=Q.g.diffs.findIndex((d,k)=>!Q.found.has(k)&&Math.hypot(d.x-p.x,d.y-p.y)<=d.r+4);
+      if(i>=0){Q.found.add(i);play(Q.found.size===Q.g.n?'ok':'aid');if(Q.found.size===Q.g.n)confetti(40);renderQ()}else play('miss');return}
+    const cell=e.target.closest('[data-cell]');
+    if(cell&&Q.g.type==='odd'){const i=+cell.dataset.cell;if(i===Q.g.idx){Q.hit=i;play('ok');confetti(40);renderQ()}else{play('miss');cell.classList.remove('miss');void cell.offsetWidth;cell.classList.add('miss')}return}
+  }
+  if(id==='peek'){Q.peek=!Q.peek;renderQ();return}
+  if(id==='go'){Q.started=true;Q.peek=false;play('reveal');renderQ();return}
+  if(id==='hint'){Q.hint++;play('aid');renderQ();return}
+  if(id==='reveal'){Q.shown=true;play('reveal');renderQ();return}
+  if(id==='pause'){Q.paused=!Q.paused;renderQ();return}
+  if(id==='skip'){Q.phase='steal';Q.ans=1-S.turn;Q.left=Q.max=20;Q.note='';play('steal');renderQ();return}
+  const qa=e.target.closest('[data-qa]');
+  if(qa&&!qa.disabled){const k=qa.dataset.qa,A=S.teams[Q.ans];play('aid');
+    if(k==='steal'){const O=1-Q.ans;S.teams[O].used.steal=true;Q.stolen=true;Q.ans=O;Q.left=Q.max=S.time;Q.paused=false;
+      Q.note='إذا جاوبوا غلط ينخصم منهم 😬';play('steal')}
+    else if(k==='dbl'){A.dbl=true;A.used.dbl=true;Q.note=`${A.name} دبّلوا! الصح ×2${penalized()?' والغلط ×2':''}`}
+    else if(AIDTIME[k]){A.used[k]=true;Q.left=Q.max=AIDTIME[k];Q.paused=false;Q.note=k==='call'?'📞 اتصال بصديق: عندكم 60 ثانية':'🔎 بحث: عندكم 50 ثانية تدورون'}
+    else{A.used[k]=true;Q.note='مسموح لكم بجوابين لهالسؤال'}
+    save();renderQ();return}
+  const w=e.target.closest('[data-win]');
+  if(w){const i=+w.dataset.win,p=P[Q.qi];
+    if(i>=0){S.teams[i].score+=S.teams[i].dbl?p*2:p;play('ok');confetti()}
+    else{if(penalized()){const L=S.teams[loser()];L.score-=L.dbl?p*2:p}play('no')}
+    S.teams.forEach(x=>{if(x.dbl){x.dbl=false;x.used.dbl=true}});
+    S.done[Q.ci+'-'+Q.qi]=1;S.turn=1-S.turn;Q=null;clearInterval(tick);$('ov').classList.add('hide');
+    const total=S.cats.reduce((s,c)=>s+c.items.filter(Boolean).length,0);
+    if(Object.keys(S.done).length>=total){S.view='end';setTimeout(()=>{play('win');confetti(160)},600)}
+    save();show()}
+});
+document.addEventListener('keydown',e=>{if(Q&&Q.started&&e.key===' '&&!Q.shown&&!['BUTTON','INPUT'].includes(document.activeElement.tagName)){e.preventDefault();Q.shown=true;play('reveal');renderQ()}});
+
+function renderEnd(){
+  const [a,b]=S.teams,tie=a.score===b.score,w=a.score>b.score?a:b;
+  $('end').innerHTML=`<div style="font-size:24px;color:var(--mute);font-weight:700">انتهت السمرة 🌙</div>
+   <h2>${tie?'تعادل! 🤝':'🏆 الفايز: '+esc(w.name)}</h2>
+   <div class="final"><span style="color:var(--a)">${esc(a.name)}: ${a.score}</span><span style="color:var(--b)">${esc(b.name)}: ${b.score}</span></div>
+   <div class="btns"><button class="go" id="again">جولة ثانية بأسئلة جديدة 🔁</button><button class="soft" id="back">رجوع للوحة</button></div>`;
+}
+function toSetup(){if(S){$('tA').value=S.teams[0].name;$('tB').value=S.teams[1].name;sel=new Set(S.cats.map(c=>c.n))}
+  S=null;ls.del('samra-state');clearInterval(tick);Q=null;$('ov').classList.add('hide');show()}
+$('end').addEventListener('click',e=>{
+  const id=e.target.closest('button')?.id;
+  if(id==='again')toSetup();
+  if(id==='back'){S.view='game';save();show()}
+});
+$('finish').onclick=()=>{S.view='end';save();play('win');confetti(160);show()};
+let armed=false;
+$('newBtn').onclick=()=>{
+  if(!armed){armed=true;$('newBtn').textContent='متأكد؟ اضغط مرة ثانية';setTimeout(()=>{armed=false;$('newBtn').textContent='لعبة جديدة'},3000);return}
+  armed=false;$('newBtn').textContent='لعبة جديدة';toSetup();
+};
+
+const saved=ls.get('samra-state',null);
+if(saved&&saved.teams&&Array.isArray(saved.cats)&&saved.cats[0]&&saved.cats[0].items)S=saved;
+show();
+}
+</script>
+</body>
+</html>
