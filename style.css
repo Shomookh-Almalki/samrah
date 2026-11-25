@@ -195,3 +195,13 @@ svg.pic text{user-select:none}
 }
 @media(max-width:420px){.board{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.confetti{display:none}}
+
+/* ---------- الباركود وصفحة السر ---------- */
+.qrbox{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;background:var(--soft);border-radius:20px;padding:12px 16px;margin:0 auto;width:min(560px,100%);text-align:start}
+.qrbox svg{width:130px;height:130px;background:#fff;border-radius:12px;padding:4px;flex:none}
+.qrbox b{font-size:17px}
+body.secret-mode>header,body.secret-mode>main,body.secret-mode>.ov{display:none!important}
+.sv{min-height:100vh;display:grid;place-items:center;padding:20px}
+.svcard{background:var(--card);border-radius:28px;box-shadow:var(--shadow);padding:30px 24px;width:min(460px,100%);text-align:center;display:grid;gap:18px}
+.svtag{font-family:var(--title);font-size:20px;color:var(--mute)}
+.svw{font-family:var(--title);font-size:clamp(34px,10vw,52px);line-height:1.4;background:linear-gradient(135deg,var(--c4),var(--c3));color:#fff;border-radius:22px;padding:24px 14px}
